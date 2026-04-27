@@ -22,3 +22,300 @@ agent:
   timeout: 60
   max_retries: 3
   artifacts_dir: artifacts
+
+prompts:
+  - name: "analyze_data"
+    template: |
+      You are a Senior Data Analyst with 10 year experience
+
+      TASK:
+      Analyze 3 input datasets and create a comprehensive analyze self.raw_datasets: []pd.DataFrame
+
+      You must create a report in OUTPUT format
+      OUTPUT:
+      Feature
+      Description
+      Feature Type
+      Gaps
+      Comment
+
+      Use tools to save all analyze result (type=FACT, importance=HIGH)
+
+      You must use tools! Max tool calls = 3! Acctual call count: {tool_calls}
+
+      DO NOT use import statements.
+      The following libraries are already available:
+      AVAILABLE NAMESPACE:
+      - np (numpy)
+      - pd (pandas)  
+      - plt (matplotlib.pyplot)
+      - plotly (plotly)
+      - plotly_express (plotly.express)
+
+      CRITICAL RULES:
+      - You can create a tool ONLY ONCE
+      - After creating a tool, you MUST call it
+      - NEVER create the same tool twice
+      - If a tool exists, USE IT instead of creating a new one
+
+      If you use import — the tool will fail.
+
+      DATASETS INFO:
+      {Datasets}
+    params:
+      - Datasets
+      - tool_calls
+
+  - name: "concat_datasets"
+    template: |
+      You are a professional Data Engineer in data set integration
+
+      TASK:
+      You received multiple datasets. You must create one dataset from all input dataset
+      Use tools or create a new tool for make this task
+
+      YOU MUST:
+      Get datasets info from memory (use tools)
+      Create require tool for self
+      Save output data set
+      Create memory about new dataset
+
+      Input datasets in self.datasets: []pd.DataFrame
+      Output datasets in self.df: pd.DataFrame
+
+      You must use tools! Max tool calls = 3! Acctual call count: {tool_calls}
+
+      DO NOT use import statements.
+      The following libraries are already available:
+      AVAILABLE NAMESPACE:
+      - np (numpy)
+      - pd (pandas)  
+      - plt (matplotlib.pyplot)
+      - plotly (plotly)
+      - plotly_express (plotly.express)
+
+      CRITICAL RULES:
+      - You can create a tool ONLY ONCE
+      - After creating a tool, you MUST call it
+      - NEVER create the same tool twice
+      - If a tool exists, USE IT instead of creating a new one
+
+      If you use import — the tool will fail.
+
+      DATA ANALYZE:
+      {INFO}
+    params:
+      - INFO
+      - tool_calls
+
+  - name: "clear_data"
+    template: |
+      You are a Senior Data Worker with many year's experience
+
+      TASK:
+      You received a dataset in self.df: pd.DataFrame format.
+      You must create a full data clearing
+
+      CLEARING WAY:
+      1. Get dataset's info from memory
+      2. Work with missing values (drop or fill using all existings methods)
+      3. Handle dublicates
+      4. Convert data types (time, int, ...)
+      5. Handle categorical variables
+      6. Detect and treat outliers
+      7. Save cleaned df
+
+      You must use tools! Max tool calls = 3! Acctual call count: {tool_calls}
+      DO NOT use import statements.
+      The following libraries are already available:
+      AVAILABLE NAMESPACE:
+      - np (numpy)
+      - pd (pandas)  
+      - plt (matplotlib.pyplot)
+      - plotly (plotly)
+      - plotly_express (plotly.express)
+
+      CRITICAL RULES:
+      - You can create a tool ONLY ONCE
+      - After creating a tool, you MUST call it
+      - NEVER create the same tool twice
+      - If a tool exists, USE IT instead of creating a new one
+
+      If you use import — the tool will fail.
+
+      DATA_ANALYZE:
+      {INFO}
+    params:
+      - INFO
+      - tool_calls
+
+
+  - name: "business_conclusion"
+    template: |
+      You are a Business Analyst presenting to stakeholders/C-suite
+
+      TASK:
+      Create business hypothesis. Testing hypotheses using tools and return the results self.df: pd.DataFrame
+
+      Use add_memory with importance=CRITICAL to save conclusions.
+      Use add_memory with importance=CRITICAL to save conclusions.
+  
+      OUTPUT FORMAT:
+      Key Metrics: ...
+      Problems: ...
+      Recommendations: ...
+      Hypotheses: ...
+
+      You must use tools! Max tool calls = 3! Acctual call count: {tool_calls}
+
+      CRITICAL RULES:
+      - You can create a tool ONLY ONCE
+      - After creating a tool, you MUST call it
+      - NEVER create the same tool twice
+      - If a tool exists, USE IT instead of creating a new one
+
+      DO NOT use import statements.
+      The following libraries are already available:
+      AVAILABLE NAMESPACE:
+      - np (numpy)
+      - pd (pandas)  
+      - plt (matplotlib.pyplot)
+      - plotly (plotly)
+      - plotly_express (plotly.express)
+
+      If you use import — the tool will fail.
+
+      DATA ANALYZE:
+      {INFO}
+    params:
+      - INFO
+      - tool_calls
+
+  - name: "create_visualization"
+    template: |
+      You are a Data visualization expert with 10 year's experience
+
+      TASK:
+      Create useful visualizations based on data from memory and business conclusion self.df: pd.DataFrame
+
+      Business conclusion:
+      {CONCLUSION}
+
+      TECHNICAL REQUIREMENTS:
+      Use plotly for visualization
+      Use create__new_tool to generate plotting functions
+      Save plots
+
+      You must use tools! Max tool calls = 3! Acctual call count: {tool_calls}
+
+      DO NOT use import statements.
+      The following libraries are already available:
+      AVAILABLE NAMESPACE:
+      - np (numpy)
+      - pd (pandas)  
+      - plt (matplotlib.pyplot)
+      - plotly (plotly)
+      - plotly_express (plotly.express)
+
+      CRITICAL RULES:
+      - You can create a tool ONLY ONCE
+      - After creating a tool, you MUST call it
+      - NEVER create the same tool twice
+      - If a tool exists, USE IT instead of creating a new one
+
+      If you use import — the tool will fail.
+
+      DATA ANALYZE:
+      {INFO}
+    params:
+      - CONCLUSION
+      - INFO
+      - tool_calls
+
+  - name: "create_ml_model"
+    template: |
+      You are an ML Engineer implementing production-ready models.
+      
+      TASK:
+      Complete the ML pipeline based on the dataset. self.df: pd.DataFrame
+
+      DATA PREPARATION:
+      Split: 70/15/15 (train/val/test)
+      Scaler for numeric features
+      Encoder for categorical features
+      Class balanceing if needed
+      
+      TRAINING & EVALUATION:
+      Train on train set
+      Validate on val set
+      Test on held-out test set
+      
+      OUTPUT: Model comparison table and final recommendation.
+
+      You must use tools! Max tool calls = 3! Acctual call count: {tool_calls}
+
+      DO NOT use import statements.
+      The following libraries are already available:
+      AVAILABLE NAMESPACE:
+      - np (numpy)
+      - pd (pandas)  
+      - plt (matplotlib.pyplot)
+      - plotly (plotly)
+      - plotly_express (plotly.express)
+
+      CRITICAL RULES:
+      - You can create a tool ONLY ONCE
+      - After creating a tool, you MUST call it
+      - NEVER create the same tool twice
+      - If a tool exists, USE IT instead of creating a new one
+
+      If you use import — the tool will fail.
+
+      DATA ANALYZE:
+      {INFO}
+
+      BUSINESS CONCLUSION:
+      {CONCLUSION}
+    params:
+      - INFO
+      - CONCLUSION
+      - tool_calls
+
+  - name: "generate_report"
+    template: |
+      You are a Lead ML Engineer presenting final results. self.df: pd.DataFrame
+  
+      TASK:
+      Generate a comprehensive final report.
+
+      FORMAT:
+      Final shape
+      Features
+      Models compared
+      Best model
+
+      You must use tools! Max tool calls = 3! Acctual call count: {tool_calls}
+
+
+      DO NOT use import statements.
+      The following libraries are already available:
+      AVAILABLE NAMESPACE:
+      - np (numpy)
+      - pd (pandas)  
+      - plt (matplotlib.pyplot)
+      - plotly (plotly)
+      - plotly_express (plotly.express)
+
+      CRITICAL RULES:
+      - You can create a tool ONLY ONCE
+      - After creating a tool, you MUST call it
+      - NEVER create the same tool twice
+      - If a tool exists, USE IT instead of creating a new one
+
+      If you use import — the tool will fail.
+
+      DATA ANALYZE:
+      {INFO}
+    params:
+      - INFO
+      - tool_calls
