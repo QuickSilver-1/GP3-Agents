@@ -1,0 +1,24 @@
+logger:
+  level: INFO
+  output_file: logs/logs.log
+
+excel:
+  raw_path: "data/raw/"
+  processed_path: "data/processed/data.xlsx"
+  raw_sheet_name: "Sheet1"
+  processed_sheet_name: "Sheet1"
+
+weaviate:
+  host: "localhost"
+  port: 8080
+  grpc_port: 50051
+
+agent:
+  name: ChatGPT
+  model: gpt-3.5-turbo-0125
+  prompt_optimizer_model: gpt-3.5-turbo-0125
+  use_prompt_optimizer: true
+  base_url: https://api.openai.com/v1
+  timeout: 60
+  max_retries: 3
+  artifacts_dir: artifacts
