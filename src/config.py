@@ -50,7 +50,7 @@ class Config:
     
     def __init__(self, env_path: str = "./.env", yaml_path: str = "./config.yaml"):
         load_dotenv(env_path)
-        self.agent.api_key = getenv("QWEN_API_KEY")
+        self.agent.api_key = getenv("API_KEY")
 
         with open(yaml_path, "r", encoding="utf-8") as config_file:
             yamlData = yaml.safe_load(config_file)
