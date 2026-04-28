@@ -10,6 +10,7 @@ from pandas import DataFrame
 from structlog import BoundLogger
 from enum import Enum
 import plotly.io as pio
+import matplotlib.pyplot as plt
 
 from langchain_core.tools import BaseTool, tool
 from langchain_core.messages import AIMessage
@@ -39,6 +40,16 @@ class AgentState(TypedDict):
     analyze: str
     conclusion: str
 
+NODE_PIPELINE: List[tuple[int, str]] = [
+    (1, Node.ANALYZE_DATA.value),
+    (2, Node.CONCAT_DATASETS.value),
+    (3, Node.CLEAR_DATA.value),
+    (4, Node.BUSINESS_CONCLUSION.value),
+    (5, Node.CREATE_VISUALIZATION.value),
+    (6, Node.CREATE_ML_MODEL.value),
+    (7, Node.GENERATE_REPORT.value),
+]
+
 class AgentGraph:
     graph: StateGraph
     llm: ChatOpenAI
@@ -54,6 +65,7 @@ class AgentGraph:
     __max_tool_rounds: int = 8
     __max_state_messages: int = 10
     artifacts_dir: str
+    stages_dir: str
     visualizations_dir: str
     reports_dir: str
     
@@ -62,8 +74,10 @@ class AgentGraph:
         self.excel_handler = excel_handler
         self.long_term_memory = weaviate_client
         self.artifacts_dir = cfg.artifacts_dir
+        self.stages_dir = os.path.join(self.artifacts_dir, "stages")
         self.visualizations_dir = os.path.join(self.artifacts_dir, "visualizations")
         self.reports_dir = os.path.join(self.artifacts_dir, "reports")
+        os.makedirs(self.stages_dir, exist_ok=True)
         os.makedirs(self.visualizations_dir, exist_ok=True)
         os.makedirs(self.reports_dir, exist_ok=True)
 
@@ -149,8 +163,13 @@ class AgentGraph:
         Return metadata and first rows for current working dataset self.data.
         """
         save_plotly_figure_desc = """
-        Save a Plotly figure (as JSON string) into an HTML file in artifacts/visualizations.
-        Returns saved file path.
+        Save a Plotly figure (as JSON string) as a PNG image under artifacts/visualizations/.
+        Requires figure JSON from fig.to_json() (Plotly). Filename should end with .png
+        (if you pass another extension, it will be saved as .png).
+        You MUST produce multiple distinct charts for this pipeline step (at least 5 different
+        filenames), each tied to a concrete insight from the business conclusion and the dataset.
+        Example names: orders_by_status.png, revenue_top_categories.png.
+        Returns saved file path per call.
         """
         save_text_file_desc = """
         Save a text content into a file in artifacts directory.
@@ -223,6 +242,15 @@ class AgentGraph:
             timeout=cfg.timeout,
             max_retries=cfg.max_retries,
         )
+
+        self._plain_llm = ChatOpenAI(
+            model=cfg.model,
+            openai_api_key=cfg.api_key,
+            base_url=cfg.base_url,
+            timeout=cfg.timeout,
+            max_retries=cfg.max_retries,
+            temperature=0.35,
+        )
         if cfg.use_prompt_optimizer:
             prompt_optimizer_llm = ChatOpenAI(
                 model=cfg.prompt_optimizer_model,
@@ -257,7 +285,6 @@ class AgentGraph:
         if len(messages) > self.__max_state_messages:
             messages = messages[-self.__max_state_messages:]
 
-        
         while messages and isinstance(messages[0], ToolMessage):
             messages = messages[1:]
 
@@ -269,12 +296,13 @@ class AgentGraph:
             tool_calls = message.additional_kwargs.get("tool_calls")
         return tool_calls or []
 
-    def _invoke_with_tool_loop(self, prompt: str, state_messages: List, node_name: str):
+    def _invoke_with_tool_loop(self, prompt: str, state_messages: List, node_name: str, max_tool_rounds: int | None = None):
+        cap = self.__max_tool_rounds if max_tool_rounds is None else max_tool_rounds
         messages = self._trim_messages(state_messages) + [HumanMessage(content=prompt)]
         response = self.llm.invoke(messages)
         messages.append(response)
 
-        for round_idx in range(self.__max_tool_rounds):
+        for round_idx in range(cap):
             tool_calls = self._get_tool_calls(response)
             if not tool_calls:
                 break
@@ -306,7 +334,7 @@ class AgentGraph:
             response = self.llm.invoke(messages)
             messages.append(response)
         else:
-            self.logger.warning(f"{node_name}: max tool rounds reached, forcing next node")
+            self.logger.warning(f"{node_name}: max tool rounds reached ({cap}), forcing next node")
             pending_calls = self._get_tool_calls(response)
             for call in pending_calls:
                 messages.append(
@@ -493,21 +521,266 @@ class AgentGraph:
 
     def _save_plotly_figure(self, figure_json: str, filename: str) -> dict:
         try:
+           
             fig = pio.from_json(figure_json)
-            safe_filename = filename if filename.endswith(".html") else f"{filename}.html"
+            
+            base, _, ext = filename.rpartition(".")
+            if ext.lower() in ("png", "jpg", "jpeg", "webp", "svg", "pdf"):
+                safe_filename = filename
+                stem = base if base else "chart"
+            
+            else:
+                stem = base if base else filename.replace(".", "_")
+                safe_filename = f"{stem}.png"
+            
             path = os.path.join(self.visualizations_dir, safe_filename)
-            pio.write_html(fig, file=path, auto_open=False)
+            fmt = safe_filename.rsplit(".", 1)[-1].lower()
+            if fmt not in ("png", "jpg", "jpeg", "webp", "svg", "pdf"):
+                fmt = "png"
+                safe_filename = f"{stem}.png"
+                path = os.path.join(self.visualizations_dir, safe_filename)
+            
+            pio.write_image(fig, path, format=fmt, width=1100, height=650, scale=1)
             return {"visualization_path": path}
+        
+        
         except Exception as e:
-            return {"error": f"Failed to save visualization: {str(e)}"}
+            return {
+                "error": (
+                    f"Failed to sve Plotly chart as PNG: {str(e)}. "
+                    "Install Kaleido: pip install 'kaleido>=1.0' (or plotly[kaleido])."
+                )
+            }
 
     def _save_text_file(self, content: str, filename: str) -> dict:
         safe_filename = filename if filename.endswith(".md") or filename.endswith(".txt") else f"{filename}.md"
         path = os.path.join(self.artifacts_dir, safe_filename)
+        
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as file:
             file.write(content)
+        
         return {"file_path": path}
+
+    def _text_preview(self, text: str, limit: int = 8000) -> str:
+        if not text:
+            return ""
+        
+        text = str(text).strip()
+        
+        if len(text) <= limit:
+            return text
+        return text[:limit] + "\n\n…(truncated)…"
+
+    def _save_node_stage_result(self, step_index: int, node_key: str, llm_text: str, extra_sections: str | None = None) -> str:
+        path = os.path.join(self.stages_dir, f"node_{step_index}_result.md")
+        raw_shapes = ", ".join([f"{i}:{tuple(df.shape)}" for i, df in enumerate(self.raw_datasets)])
+        head_md = ""
+        
+        if self.data is not None and not self.data.empty:
+            head_md = "```\n" + self.data.head(8).to_string() + "\n```"
+        
+        lines = [
+            f"# Node {step_index}: `{node_key}`",
+            "",
+            f"**Completed at:** {datetime.now().isoformat()}",
+            "",
+            "## Model output (this step)",
+            self._text_preview(llm_text or "(empty)", 12000),
+            "",
+            "## Data snapshot",
+            f"- Raw datasets (index:shape): {raw_shapes or 'none'}",
+            f"- Working `self.data` shape: `{getattr(self.data, 'shape', None)}`",
+            "",
+        ]
+        
+        if head_md:
+            lines.extend(["### Sample rows (working dataset)", "", head_md, ""])
+        if extra_sections:
+            lines.extend(["## Additional artifacts", "", extra_sections.strip(), ""])
+        
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        self.logger.info(f"Stage artifact written: {path}")
+                
+        return path
+
+    def _save_mpl_figure(self, basename: str) -> str:
+        os.makedirs(self.visualizations_dir, exist_ok=True)
+        stem = basename[:-4] if basename.lower().endswith(".png") else basename
+        
+        safe = f"{stem}.png"
+        path = os.path.join(self.visualizations_dir, safe)
+        
+        plt.savefig(path, dpi=120, bbox_inches="tight")
+        plt.close()
+        return path
+
+    def _append_auto_business_visualizations(self, conclusion: str) -> str:
+        df = self.data
+        if df is None or df.empty:
+            return "(no auto charts: working dataset empty)"
+
+        lines: List[str] = []
+        prefix = "node5_auto"
+        subtitle = self._text_preview(conclusion, 200).replace("\n", " ")
+
+        def _numeric_cols(limit: int = 4):
+            out = []
+            
+            for c in df.columns:
+                if pd.api.types.is_numeric_dtype(df[c]) and df[c].notna().any():
+                    out.append(c)
+            return out[:limit]
+
+        def _cat_cols(limit: int = 2):
+            out = []
+            for c in df.columns:
+                s = df[c]
+                is_cat = (
+                    pd.api.types.is_object_dtype(s)
+                    or pd.api.types.is_categorical_dtype(s)
+                    or pd.api.types.is_string_dtype(s)
+                )
+                if not is_cat:
+                    continue
+                nu = s.nunique(dropna=True)
+                if 2 <= nu <= 24:
+                    out.append(c)
+            return out[:limit]
+
+        try:
+            miss = df.isnull().sum().sort_values(ascending=False).head(25)
+            miss = miss[miss > 0]
+            
+            if not miss.empty:
+                plt.figure(figsize=(10, 5))
+                plt.bar(miss.index.astype(str), miss.values, color="steelblue")
+                plt.xticks(rotation=45, ha="right")
+                plt.ylabel("missing_count")
+                plt.title(f"Missing values by column\n{subtitle}" if subtitle else "Missing values by column")
+                plt.tight_layout()
+                lines.append(self._save_mpl_figure(f"{prefix}_01_missing_values.png"))
+        except Exception as e:
+            lines.append(f"(skip missingness chart: {e})")
+
+        nums = _numeric_cols(4)
+        cats = _cat_cols(2)
+
+        if nums:
+            try:
+                plt.figure(figsize=(10, 5))
+                plt.hist(df[nums[0]].dropna(), bins=40, color="teal", edgecolor="white")
+                plt.xlabel(nums[0])
+                plt.ylabel("count")
+                plt.title(f"Distribution: {nums[0]}\n{subtitle}" if subtitle else f"Distribution: {nums[0]}")
+                plt.tight_layout()
+                lines.append(self._save_mpl_figure(f"{prefix}_02_hist_{nums[0]}.png"))
+            except Exception as e:
+                lines.append(f"(skip histogram: {e})")
+
+        if cats:
+            try:
+                vc = df[cats[0]].astype(str).value_counts().head(15)
+                plt.figure(figsize=(10, 5))
+                plt.bar(vc.index.astype(str), vc.values, color="darkorange")
+                plt.xticks(rotation=45, ha="right")
+                plt.ylabel("count")
+                plt.title(f"Top categories: {cats[0]}\n{subtitle}" if subtitle else f"Top categories: {cats[0]}")
+                plt.tight_layout()
+                lines.append(self._save_mpl_figure(f"{prefix}_03_bar_{cats[0]}.png"))
+            except Exception as e:
+                lines.append(f"(skip bar chart: {e})")
+
+        if len(nums) >= 2:
+            try:
+                sub = df[[nums[0], nums[1]]].dropna()
+                if len(sub) > 1:
+                    plt.figure(figsize=(8, 6))
+                    plt.scatter(sub[nums[0]], sub[nums[1]], alpha=0.35, s=8)
+                    plt.xlabel(nums[0])
+                    plt.ylabel(nums[1])
+                    plt.title(
+                        f"Scatter: {nums[0]} vs {nums[1]}\n{subtitle}" if subtitle else f"Scatter: {nums[0]} vs {nums[1]}"
+                    )
+                    plt.tight_layout()
+                    lines.append(self._save_mpl_figure(f"{prefix}_04_scatter_{nums[0]}_{nums[1]}.png"))
+            except Exception as e:
+                lines.append(f"(skip scatter: {e})")
+
+        if nums and cats:
+            try:
+                fig, ax = plt.subplots(figsize=(10, 5))
+                df.boxplot(column=nums[0], by=cats[0], ax=ax, rot=45)
+                fig.suptitle("")
+                
+                ax.set_title(f"{nums[0]} by {cats[0]}\n{subtitle}" if subtitle else f"{nums[0]} by {cats[0]}")
+                ax.set_xlabel(cats[0])
+                ax.set_ylabel(nums[0])
+                fig.tight_layout()
+                
+                os.makedirs(self.visualizations_dir, exist_ok=True)
+                path = os.path.join(self.visualizations_dir, f"{prefix}_05_box_{nums[0]}_by_{cats[0]}.png")
+                fig.savefig(path, dpi=120, bbox_inches="tight")
+                plt.close(fig)
+                lines.append(path)
+           
+            except Exception as e:
+                lines.append(f"(skip box: {e})")
+
+        if len(nums) >= 3:
+            try:
+                sub = df[nums[: min(8, len(nums))]].dropna()
+                if sub.shape[1] >= 2 and len(sub) > 20:
+                    corr = sub.corr(numeric_only=True)
+                    plt.figure(figsize=(8, 6))
+                    plt.imshow(corr.values, aspect="auto", cmap="RdBu_r", vmin=-1, vmax=1)
+                    plt.colorbar(fraction=0.046, pad=0.04)
+                    plt.xticks(range(len(corr.columns)), corr.columns, rotation=45, ha="right")
+                    plt.yticks(range(len(corr.index)), corr.index)
+                    plt.title(
+                        f"Correlation heatmap\n{subtitle}" if subtitle else "Correlation heatmap"
+                    )
+                    plt.tight_layout()
+                    lines.append(self._save_mpl_figure(f"{prefix}_06_correlation.png"))
+            except Exception as e:
+                lines.append(f"(skip heatmap: {e})")
+
+        return "\n".join(p if p.startswith("(") else f"- `{p}`" for p in lines)
+
+    def _build_global_synthesis(self, analyze: str, conclusion: str, node_report: str) -> str:
+        prompt = f"""You are a senior strategy advisor for an e-commerce / digital operations leadership team.
+        Using ONLY the material below, produce a GLOBAL synthesis in Markdown.
+
+        Required sections (use these headings exactly):
+        ## Strategic picture
+        ## Market & customer dynamics (inferred)
+        ## Operational levers
+        ## Risks & unknowns
+        ## Next 90 days — priorities
+        ## KPIs to monitor
+        ## Honest limitations of this analysis
+
+        Rules:
+        - Integrate across data understanding, business hypotheses, and ML results; avoid copy-pasting earlier bullets verbatim.
+        - Be substantive but readable (about 900–1500 words).
+        - If the inputs are mostly Russian, write in Russian; otherwise English.
+
+        ### Data / analysis notes
+        {self._text_preview(analyze or "", 6000)}
+
+        ### Business layer
+        {self._text_preview(conclusion or "", 4000)}
+
+        ### Model / technical layer
+        {self._text_preview(node_report or "", 4000)}
+        """
+        
+        try:
+            out = self._plain_llm.invoke([HumanMessage(content=prompt)])
+            return (out.content or "").strip()
+        except Exception as e:
+            return f"(global synthesis unavailable: {e})"
 
     def _save_detailed_report(self, state: AgentState, llm_report: str) -> str:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -556,6 +829,7 @@ class AgentGraph:
             [
                 "",
                 "## Produced Artifacts",
+                f"- Per-node stage files: `{self.stages_dir}` / `node_1_result.md` … `node_7_result.md`",
                 f"- Visualizations directory: `{self.visualizations_dir}`",
                 f"- Reports directory: `{self.reports_dir}`",
                 "",
@@ -588,6 +862,7 @@ class AgentGraph:
         )
         
         self.logger.info("ANALYZE_DATA node completed")
+        self._save_node_stage_result(1, Node.ANALYZE_DATA.value, response.content or "", None)
         return {
             "messages": updated_messages,
             "data": state["data"],
@@ -607,6 +882,7 @@ class AgentGraph:
         )
     
         self.logger.info(f"CONCAT_DATASETS completed. Shape: {self.data.shape}")
+        self._save_node_stage_result(2, Node.CONCAT_DATASETS.value, response.content or "", None)
         return {
             "messages": updated_messages,
             "data": self.data,
@@ -626,6 +902,7 @@ class AgentGraph:
         )
     
         self.logger.info(f"CLEAR_DATA completed. Shape: {self.data.shape}")
+        self._save_node_stage_result(3, Node.CLEAR_DATA.value, response.content or "", None)
         return {
             "messages": updated_messages,
             "data": self.data,
@@ -646,6 +923,7 @@ class AgentGraph:
         )
     
         self.logger.info("BUSINESS_CONCLUSION completed")
+        self._save_node_stage_result(4, Node.BUSINESS_CONCLUSION.value, response.content or "", None)
         return {
             "messages": updated_messages,
             "data": state["data"],
@@ -658,7 +936,13 @@ class AgentGraph:
         self.logger.info("CREATE_VISUALIZATION node started")
         
         prompt = self.prompts["create_visualization"].template.format(INFO=state["analyze"], CONCLUSION=state["conclusion"], tool_calls=self.__tool_call_count)
-        updated_messages, response = self._invoke_with_tool_loop(prompt, state["messages"], Node.CREATE_VISUALIZATION.value)
+        updated_messages, response = self._invoke_with_tool_loop(
+            prompt,
+            state["messages"],
+            Node.CREATE_VISUALIZATION.value,
+            max_tool_rounds=14,
+        )
+        auto_viz_list = self._append_auto_business_visualizations(state.get("conclusion") or "")
         self.long_term_memory.create_memory(
             type=MemoryType.FACT,
             importance=ImportanceLevel.HIGH,
@@ -666,6 +950,11 @@ class AgentGraph:
         )
     
         self.logger.info("CREATE_VISUALIZATION completed")
+        viz_notes = (
+            "### Auto-generated charts (baseline pack; LLM may add more PNG files under visualizations/)\n\n"
+            + auto_viz_list
+        )
+        self._save_node_stage_result(5, Node.CREATE_VISUALIZATION.value, response.content or "", viz_notes)
         return {
             "messages": updated_messages,
             "data": state["data"],
@@ -686,6 +975,7 @@ class AgentGraph:
         )
     
         self.logger.info("CREATE_ML_MODEL completed")
+        self._save_node_stage_result(6, Node.CREATE_ML_MODEL.value, response.content or "", None)
         return {
             "messages": updated_messages,
             "data": state["data"],
@@ -699,6 +989,16 @@ class AgentGraph:
         
         prompt = self.prompts["generate_report"].template.format(INFO=state["analyze"], CONCLUSION=state["conclusion"], tool_calls=self.__tool_call_count)
         updated_messages, response = self._invoke_with_tool_loop(prompt, state["messages"], Node.GENERATE_REPORT.value)
+        global_md = self._build_global_synthesis(
+            state.get("analyze") or "",
+            state.get("conclusion") or "",
+            response.content or "",
+        )
+        full_report_body = (
+            (response.content or "").strip()
+            + "\n\n---\n\n## Синтез для руководства (глобальный вывод)\n\n"
+            + global_md
+        )
         self.long_term_memory.create_memory(
             type=MemoryType.FACT,
             importance=ImportanceLevel.HIGH,
@@ -707,8 +1007,18 @@ class AgentGraph:
     
         self.logger.info("GENERATE_REPORT completed")
         self.logger.info(f"Generated report: {response.content}")
-        report_path = self._save_detailed_report(state, response.content)
+        report_path = self._save_detailed_report(state, full_report_body)
         self.logger.info(f"Detailed report saved: {report_path}")
+        self._save_node_stage_result(
+            7,
+            Node.GENERATE_REPORT.value,
+            full_report_body,
+            f"Aggregated markdown report: `{report_path}`",
+        )
+        
+        agent_dict = self.agent.get_graph().to_json()
+        with open("artifacts/graph.json", "w", encoding="utf-8") as f:
+            json.dump(agent_dict, f, indent=2, default=str)
         
         return {
             "messages": updated_messages,

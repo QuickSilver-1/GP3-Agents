@@ -1,0 +1,145 @@
+{
+  "nodes": [
+    {
+      "id": "__start__",
+      "type": "runnable",
+      "data": {
+        "id": [
+          "langgraph",
+          "_internal",
+          "_runnable",
+          "RunnableCallable"
+        ],
+        "name": "__start__"
+      }
+    },
+    {
+      "id": "analyze_data",
+      "type": "runnable",
+      "data": {
+        "id": [
+          "langgraph",
+          "_internal",
+          "_runnable",
+          "RunnableCallable"
+        ],
+        "name": "analyze_data"
+      }
+    },
+    {
+      "id": "concat_datasets",
+      "type": "runnable",
+      "data": {
+        "id": [
+          "langgraph",
+          "_internal",
+          "_runnable",
+          "RunnableCallable"
+        ],
+        "name": "concat_datasets"
+      }
+    },
+    {
+      "id": "clear_data",
+      "type": "runnable",
+      "data": {
+        "id": [
+          "langgraph",
+          "_internal",
+          "_runnable",
+          "RunnableCallable"
+        ],
+        "name": "clear_data"
+      }
+    },
+    {
+      "id": "business_conclusion",
+      "type": "runnable",
+      "data": {
+        "id": [
+          "langgraph",
+          "_internal",
+          "_runnable",
+          "RunnableCallable"
+        ],
+        "name": "business_conclusion"
+      }
+    },
+    {
+      "id": "create_visualization",
+      "type": "runnable",
+      "data": {
+        "id": [
+          "langgraph",
+          "_internal",
+          "_runnable",
+          "RunnableCallable"
+        ],
+        "name": "create_visualization"
+      }
+    },
+    {
+      "id": "create_ml_model",
+      "type": "runnable",
+      "data": {
+        "id": [
+          "langgraph",
+          "_internal",
+          "_runnable",
+          "RunnableCallable"
+        ],
+        "name": "create_ml_model"
+      }
+    },
+    {
+      "id": "generate_report",
+      "type": "runnable",
+      "data": {
+        "id": [
+          "langgraph",
+          "_internal",
+          "_runnable",
+          "RunnableCallable"
+        ],
+        "name": "generate_report"
+      }
+    },
+    {
+      "id": "__end__"
+    }
+  ],
+  "edges": [
+    {
+      "source": "__start__",
+      "target": "analyze_data"
+    },
+    {
+      "source": "analyze_data",
+      "target": "concat_datasets"
+    },
+    {
+      "source": "business_conclusion",
+      "target": "create_visualization"
+    },
+    {
+      "source": "clear_data",
+      "target": "business_conclusion"
+    },
+    {
+      "source": "concat_datasets",
+      "target": "clear_data"
+    },
+    {
+      "source": "create_ml_model",
+      "target": "generate_report"
+    },
+    {
+      "source": "create_visualization",
+      "target": "create_ml_model"
+    },
+    {
+      "source": "generate_report",
+      "target": "__end__"
+    }
+  ]
+}
