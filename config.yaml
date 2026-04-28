@@ -78,6 +78,7 @@ prompts:
       Get datasets info from memory (use tools)
       Create require tool for self
       Save result dataset in self.df: pd.DataFrame and in memory (type=DATASET, importance=HIGH)
+
       Create memory about new dataset
 
       Input datasets in self.datasets: []pd.DataFrame
@@ -307,7 +308,6 @@ prompts:
       ## Open questions / next experiments
 
       You must use tools! Max tool calls = 3! Acctual call count: {tool_calls}
-
       DO NOT use import statements.
       The following libraries are already available:
       AVAILABLE NAMESPACE:
