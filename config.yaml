@@ -77,7 +77,8 @@ prompts:
       YOU MUST:
       Get datasets info from memory (use tools)
       Create require tool for self
-      Save output data set
+      Save result dataset in self.df: pd.DataFrame and in memory (type=DATASET, importance=HIGH)
+
       Create memory about new dataset
 
       Input datasets in self.datasets: []pd.DataFrame
@@ -149,22 +150,26 @@ prompts:
       - INFO
       - tool_calls
 
-
   - name: "business_conclusion"
     template: |
       You are a Business Analyst presenting to stakeholders/C-suite
 
       TASK:
-      Create business hypothesis. Testing hypotheses using tools and return the results self.df: pd.DataFrame
+      Ground your reasoning in the dataset and prior analysis. Form hypotheses, validate them with tools
+      (aggregations, segment cuts, simple metrics), and return implications for self.df: pd.DataFrame.
 
-      Use add_memory with importance=CRITICAL to save conclusions.
-      Use add_memory with importance=CRITICAL to save conclusions.
-  
-      OUTPUT FORMAT:
+      Use add_memory with importance=CRITICAL to save conclusions (twice is intentional: main + backup).
+
+      OUTPUT FORMAT (must be complete and actionable):
+      Executive summary (5–8 sentences, global picture for leadership):
       Key Metrics: ...
-      Problems: ...
-      Recommendations: ...
-      Hypotheses: ...
+      Segment insights: ...
+      Problems / bottlenecks: ...
+      Opportunities: ...
+      Recommendations (prioritized, with owner/team + timeframe): ...
+      Hypotheses (tested vs open): ...
+      Risks & data caveats: ...
+      Next 30–90 days roadmap: ...
 
       You must use tools! Max tool calls = 3! Acctual call count: {tool_calls}
 
@@ -196,15 +201,19 @@ prompts:
       You are a Data visualization expert with 10 year's experience
 
       TASK:
-      Create useful visualizations based on data from memory and business conclusion self.df: pd.DataFrame
+      Build a coherent analytics pack for leadership: each chart must map to at least one claim in the
+      business conclusion (quote which claim in the chart title or subtitle via fig.update_layout).
 
       Business conclusion:
       {CONCLUSION}
 
       TECHNICAL REQUIREMENTS:
-      Use plotly for visualization
-      Use create__new_tool to generate plotting functions
-      Save plots
+      - Use Plotly only.
+      - You MUST call `_save_plotly_figure_wrapper` at least 5 times with DIFFERENT filenames
+        (e.g. orders_by_status.html, revenue_top_categories.html, delivery_delay_distribution.html).
+      - Cover different angles: distribution, ranking, relationship, composition/trend (if time-like column exists),
+        and one diagnostic view (e.g. outliers / missingness if relevant).
+      - Prefer `create_new_tool` once for reusable plotting helpers, then call them + save each figure as JSON.
 
       You must use tools! Max tool calls = 3! Acctual call count: {tool_calls}
 
@@ -286,17 +295,19 @@ prompts:
       You are a Lead ML Engineer presenting final results. self.df: pd.DataFrame
   
       TASK:
-      Generate a comprehensive final report.
+      Produce a comprehensive final narrative suitable for executives + ML owners.
 
-      FORMAT:
-      Final shape
-      Features
-      Models compared
-      Best model
+      FORMAT (Markdown sections, all mandatory):
+      ## Dataset & business context recap
+      ## Data quality & feature engineering decisions
+      ## Modeling methodology (splits, metrics, leakage checks)
+      ## Model comparison table (verbatim numbers)
+      ## Best model justification (trade-offs: latency, interpretability, stability)
+      ## Error analysis & segments where the model fails
+      ## Production checklist (monitoring, drift, retraining triggers)
+      ## Open questions / next experiments
 
       You must use tools! Max tool calls = 3! Acctual call count: {tool_calls}
-
-
       DO NOT use import statements.
       The following libraries are already available:
       AVAILABLE NAMESPACE:

@@ -4,7 +4,7 @@ from typing import List
 from enum import Enum
 import grpc
 from structlog import BoundLogger
-import src.weaviate as weaviate
+import weaviate
 from weaviate.classes.config import Configure, Property, DataType
 from weaviate.classes.query import MetadataQuery, Filter
 from src.config import Weaviate
